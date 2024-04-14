@@ -22,42 +22,19 @@ class TurtlesimController(Node):
     def cb_pose(self, msg):
         self.pose = msg
 
-    def go_to(self, speed, omega, x, y):
-        # Wait for position to be received
-        loop_rate = self.create_rate(75, self.get_clock()) # Hz
-        while self.pose is None and rclpy.ok():
-            self.get_logger().info('Waiting for pose...')
-            rclpy.spin_once(self)
-
-        # Stuff with atan2
-        x0 = self.pose.x
-        y0 = self.pose.y
-        theta_0 = math.degrees(self.pose.theta)
-
-        theta_1 = math.degrees(math.atan2(y-y0, x-x0))
-        angle = theta_1 - theta_0
-        distance = math.sqrt(((x - x0) * (x - x0)) + (y - y0) * (y - y0))
-
-        # Execute movement
-        self.turn(omega, angle)
-        self.go_straight(speed, distance)
-
     def go_straight(self, speed, distance):
-        # Implement straght motion here
-        # Create and publish msg
-
         # Wait for position to be received
         loop_rate = self.create_rate(100, self.get_clock()) # Hz
         while self.pose is None and rclpy.ok():
             self.get_logger().info('Waiting for pose...')
             rclpy.spin_once(self)
         
-        dx, dy = self.get_front_coordinates(self.pose.x, self.pose.y, self.pose.theta, distance)
-        current_distance = math.sqrt((dx - self.pose.x) ** 2 + (dy - self.pose.y) ** 2)
-        target_distance = current_distance - abs(distance)  # Subtract distance instead of adding
+        # calculate the coordinate of the distance
+        dx, dy = self._get_front_coordinates(self.pose.x, self.pose.y, self.pose.theta, distance)
+        error = math.sqrt((dx - self.pose.x) ** 2 + (dy - self.pose.y) ** 2)
+        is_front = self._is_destination_in_front(dx, dy)
 
-
-        Kp = 1.15
+        Kp = 1.5
 
         vel_msg = Twist()
         if distance > 0:
@@ -72,26 +49,16 @@ class TurtlesimController(Node):
 
         # Set loop rate
         loop_rate = self.create_rate(125, self.get_clock()) # Hz
-
-        # Calculate time
-        #T = abs(distance / speed)
-
-        # Publish first msg and note time when to stop
-        #self.twist_pub.publish(vel_msg)
-        #self.get_logger().info('Turtle started.')
-        #when = self.get_clock().now() + rclpy.time.Duration(seconds=T)
-
-        # Publish msg while the calculated time is up
-        #while (self.get_clock().now() <= when) and rclpy.ok():
-            #self.twist_pub.publish(vel_msg)
-            #self.get_logger().info('On its way...')
-            #rclpy.spin_once(self)   # loop rate
         
-        while True:
-            rclpy.spin_once(self)
-            #dx, dy = self.get_front_coordinates(self.pose.x, self.pose.y, self.pose.theta, distance)
+        while abs(error) >= 0.01:
             error = math.sqrt((dx - self.pose.x) ** 2 + (dy - self.pose.y) ** 2)
-            # = distance - current_distance
+            check_dest_front = self._is_destination_in_front(dx, dy)
+
+            if is_front != check_dest_front:
+                distance *= -1
+                is_front = check_dest_front
+                self.get_logger().info("Changed direction")
+
             # Calculate control signal
             control_signal = error * Kp
             control_signal = math.copysign(control_signal, distance)
@@ -106,17 +73,10 @@ class TurtlesimController(Node):
             self.twist_pub.publish(vel_msg)
 
             # Log information
-            self.get_logger().info("Current Distance: {:.2f}".format(error))
-            self.get_logger().info("Target Y: {:.2f}".format(self.pose.y))
-            self.get_logger().info("Control Signal: {:.2f}".format(control_signal))
-
-            # Check if within tolerance
-            if abs(error) < 0.075:
-                break
-
-            
-            # Sleep to maintain loop rate
-            
+            #self.get_logger().info("Current Distance: {:.2f}".format(error))
+            #self.get_logger().info("Target Y: {:.2f}".format(self.pose.y))
+            #self.get_logger().info("Control Signal: {:.2f}".format(control_signal))
+            rclpy.spin_once(self)
 
         # turtle arrived, set velocity to 0
         vel_msg.linear.x = 0.0
@@ -124,11 +84,6 @@ class TurtlesimController(Node):
         #self.get_logger().info('Arrived to destination.')
 
     def turn(self, omega, angle):
-        # Implement straght motion here
-        # Create and publish msg
-
-        last_angle = 0.0
-
         # Wait for position to be received
         loop_rate = self.create_rate(75, self.get_clock()) # Hz
         while self.pose is None and rclpy.ok():
@@ -147,74 +102,48 @@ class TurtlesimController(Node):
             vel_msg.angular.z = -math.radians(omega)
 
         current_angle = math.degrees(self.pose.theta)
-        if current_angle < 0:
-            current_angle += 2 * 180
-        elif current_angle > 360:
-            current_angle -= 2 * 180
+        current_angle = self._normalise_angle(current_angle)
 
         target_angle = current_angle + angle
+        target_angle = self._normalise_angle(target_angle)
 
-        if target_angle < 0:
-            target_angle += 2 * 180
-        elif target_angle > 360:
-            target_angle -= 2 * 180
-
-        Kp = 0.05
+        Kp = 4
 
         # Set loop rate
         loop_rate = self.create_rate(100, self.get_clock()) # Hz
 
-        # Calculate time
-        #T = abs(angle / omega)
-
-        # Publish first msg and note time when to stop
-        
-        #self.get_logger().info('Turtle started.')
-        #when = self.get_clock().now() + rclpy.time.Duration(seconds=T)
-        
-
-        # Publish msg while the calculated time is up
-        #while (self.get_clock().now() <= when) and rclpy.ok():
-            #Đself.twist_pub.publish(vel_msg)
-            #self.get_logger().info('On its way...')
-            #rclpy.spin_once(self)   # loop rate
         error = target_angle - current_angle
         if abs(error) > 180:
             if error > 0:
-                error -= 2 * 180
+                error -= 1 * 180
             else:
-                error += 2 * 180
+                error += 1 * 180
         
         while abs(error) > 0.015 and rclpy.ok():
-                   
-
             control_signal = error * Kp   
 
             control_signal = min(max(control_signal, -omega), omega)
 
-            vel_msg.angular.z = control_signal
+            vel_msg.angular.z = math.radians(control_signal)
 
             self.twist_pub.publish(vel_msg)
 
             
             current_angle = math.degrees(self.pose.theta)
-            if current_angle < 0:
-                current_angle += 2 * 180
-            elif current_angle > 360:
-                current_angle -= 2 * 180
+            current_angle = self._normalise_angle(current_angle)
 
             error = target_angle - current_angle
             if abs(error) > 180:
                 if error > 0:
-                    error -= 2 * 180
+                    error -= 1 * 180
                 else:
-                    error += 2 * 180
+                    error += 1 * 180
 
-            # Sleep to maintain loop rate
-            self.get_logger().info("current angle: " + str(current_angle))
-            self.get_logger().info("target angle: " + str(target_angle))
-            self.get_logger().info("speed " + str(vel_msg.angular.z))
-            rclpy.spin_once(self)   # loop rate
+
+            #self.get_logger().info("current angle: " + str(current_angle))
+            #self.get_logger().info("target angle: " + str(target_angle))
+            #self.get_logger().info("speed " + str(vel_msg.angular.z))
+            rclpy.spin_once(self)
         
 
         # turtle arrived, set velocity to 0
@@ -222,7 +151,7 @@ class TurtlesimController(Node):
         self.twist_pub.publish(vel_msg)
         #self.get_logger().info('Arrived to destination.')
         
-    def get_front_coordinates(self, tx, ty, theta, distance):
+    def _get_front_coordinates(self, tx, ty, theta, distance):
         # Calculate the x, y offset based on the turtle's orientation
         dx = distance * math.cos(theta)
         dy = distance * math.sin(theta)
@@ -233,12 +162,28 @@ class TurtlesimController(Node):
 
         return front_x, front_y
 
-    def draw_poly(self, speed, omega, N, a):
+    def _is_destination_in_front(self, dest_x, dest_y):
+        # Calculate the angle between turtle orientation and vector to destination
+        angle_to_dest = math.atan2(dest_y- self.pose.y, dest_x - self.pose.x)
+        angle_diff = math.degrees(abs(angle_to_dest - self.pose.theta))
+        angle_diff = (angle_diff + 180) % 360 - 180  # Normalize angle between -180 and 180 degrees
 
-        angle = 360.0 / N
-        for i in range(N):
-            self.go_straight(speed, a)
-            self.turn(omega, angle)
+        # Determine relative position
+        if abs(angle_diff) < 90:
+            self.get_logger().info("front")
+            return True
+        else:
+            self.get_logger().info("Back")
+            return False
+    
+    def _normalise_angle(self, angle):
+        if angle < 0:
+            angle += 360
+        elif angle > 360:
+            angle -= 360
+        
+        return angle
+
 
 class FractalTree():
     def __init__(self, speed, omega):
@@ -305,12 +250,11 @@ class FractalTree():
 def main(args=None):
     rclpy.init(args=args)
     tc = FractalTree(6.0, 60.0)
-    #tc = TurtlesimController()
 
-    #tc.go_to(4.0, 40.0, 2, 8)
     v = 2.5
     tc.setup_turtle(v)
     tc.draw_tree(v)
+    
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
