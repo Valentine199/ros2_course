@@ -7,7 +7,7 @@ from turtlesim.msg import Pose
 
 class TurtlesimController(Node):
 
-    def __init__(self):
+    def __init__(self, speed, omega):
         super().__init__('turtlesim_controller')
         self.twist_pub = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
 
@@ -19,15 +19,18 @@ class TurtlesimController(Node):
             10
         )
 
+        self.speed:float = speed
+        self.omega:float = omega
+
+
     def cb_pose(self, msg):
         self.pose = msg
 
-    def go_straight(self, speed, distance):
+    def go_straight(self, distance):
         """
         Move the robot straight at a specified speed for a given distance.
 
         Parameters:
-            speed (float): The linear speed of the robot in meters per second. Positive value for forward motion, negative for backward.
             distance (float): The distance the robot should travel in meters. Positive value for forward motion, negative for backward.
 
         Notes:
@@ -52,9 +55,9 @@ class TurtlesimController(Node):
 
         vel_msg = Twist()
         if distance > 0:
-            vel_msg.linear.x = speed
+            vel_msg.linear.x = self.speed
         else:
-            vel_msg.linear.x = -speed
+            vel_msg.linear.x = -self.speed
         vel_msg.linear.y = 0.0
         vel_msg.linear.z = 0.0
         vel_msg.angular.x = 0.0
@@ -78,7 +81,7 @@ class TurtlesimController(Node):
             control_signal = math.copysign(control_signal, distance)
 
             # Limit control signal to the maximum linear velocity
-            control_signal = min(max(control_signal, -speed), speed)
+            control_signal = min(max(control_signal, -self.speed), self.speed)
 
             # Set linear velocity
             vel_msg.linear.x = control_signal
@@ -97,12 +100,11 @@ class TurtlesimController(Node):
         self.twist_pub.publish(vel_msg)
         #self.get_logger().info('Arrived to destination.')
 
-    def turn(self, omega, angle):
+    def turn(self, angle):
         """
         Turn the robot at a specified angular velocity to achieve a desired angle.
 
         Parameters:
-            omega (float): The angular velocity of the robot in radians per second. Positive value for counterclockwise rotation, negative for clockwise.
             angle (float): The angle by which the robot should turn in degrees. Positive value for counterclockwise rotation, negative for clockwise.
 
         Notes:
@@ -126,9 +128,9 @@ class TurtlesimController(Node):
         vel_msg.angular.x = 0.0
         vel_msg.angular.y = 0.0
         if angle > 0:
-            vel_msg.angular.z = math.radians(omega)
+            vel_msg.angular.z = math.radians(self.omega)
         else:
-            vel_msg.angular.z = -math.radians(omega)
+            vel_msg.angular.z = -math.radians(self.omega)
 
         current_angle = math.degrees(self.pose.theta)
         current_angle = self._normalise_angle(current_angle)
@@ -151,7 +153,7 @@ class TurtlesimController(Node):
         while abs(error) > 0.015 and rclpy.ok():
             control_signal = error * Kp   
 
-            control_signal = min(max(control_signal, -omega), omega)
+            control_signal = min(max(control_signal, -self.omega), self.omega)
 
             vel_msg.angular.z = math.radians(control_signal)
 
@@ -260,40 +262,6 @@ class TurtlesimController(Node):
         
         return angle
 
-
-class FractalTree():
-    def __init__(self, speed, omega):
-        self.turtle = TurtlesimController()
-        self.speed:float = speed
-        self.omega:float = omega
-    
-    def set_speed(self, speed: float):
-        self.speed = speed
-
-    def set_omega(self, omega: float):
-        self.omega = omega
-    
-    def delete_turtle(self):
-        self.turtle.destroy_node()
-    
-    def _forward(self, distance: int):
-        distance = abs(distance)
-        self.turtle.go_straight(self.speed, distance)
-    
-    def _backward(self, distance: int):
-        if distance > 0:
-            distance *= -1
-        
-        self.turtle.go_straight(self.speed, distance)
-    
-    def _left(self, angle: float):
-        self.turtle.turn(self.omega, angle)
-    
-    def _right(self, angle: float):
-        if angle > 0:
-            angle *= -1
-        self.turtle.turn(self.omega, angle)
-    
     def setup_turtle(self, offset):
         """
         Set up the turtle's initial position and speed.
@@ -305,8 +273,8 @@ class FractalTree():
             - This method positions the turtle to the left and backward by 90 degrees and the specified offset distance.
             - If the turtle's speed is not set or set to a non-positive value, it is defaulted to 20 units.
         """
-        self._left(90)
-        self._backward(offset)
+        self.turn(90)
+        self.go_straight(-offset)
 
         if self.speed <= 0:
             self.speed = 20
@@ -330,25 +298,22 @@ class FractalTree():
             return
         else:
             
-            self._forward(i)
+            self.go_straight(i)
             next = 3*i/4
             if (next >= 0.5):
-                self._left(30.0)
+                self.turn(30.0)
                 self.draw_tree(next)
 
-                self._right(60.0)
+                self.turn(-60.0)
                 self.draw_tree(next)
 
-                self._left(30.0)
+                self.turn(30.0)
 
-            self._backward(i)
-
-
-
+            self.go_straight(-i)
 
 def main(args=None):
     rclpy.init(args=args)
-    tc = FractalTree(6.0, 60.0)
+    tc = TurtlesimController(6.0, 60.0)
 
     v = 2.5
     tc.setup_turtle(v)
@@ -357,8 +322,7 @@ def main(args=None):
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    #tc.destroy_node()
-    tc.delete_turtle()
+    tc.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
