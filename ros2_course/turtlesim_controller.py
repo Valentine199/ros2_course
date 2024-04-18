@@ -18,10 +18,16 @@ class TurtlesimController(Node):
             self.cb_pose,
             10
         )
+        self.declare_parameter("iter", 2.5)
+        self.timer = self.create_timer(5, self.param_callback)
 
         self.speed:float = speed
         self.omega:float = omega
+        self.iter = None
 
+
+    def param_callback(self):
+        self.iter = self.get_parameter("iter").get_parameter_value().double_value
 
     def cb_pose(self, msg):
         self.pose = msg
@@ -313,11 +319,17 @@ class TurtlesimController(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    tc = TurtlesimController(6.0, 60.0)
 
-    v = 2.5
-    tc.setup_turtle(v)
-    tc.draw_tree(v)
+    tc = TurtlesimController(6.0, 60.0)
+    iterations = 2.5
+    while tc.iter is None and rclpy.ok():
+        rclpy.spin_once(tc)
+        print(tc.iter)
+
+    iterations = tc.iter
+
+    tc.setup_turtle(iterations)
+    tc.draw_tree(iterations)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
