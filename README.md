@@ -1,4 +1,5 @@
 # TurtleSim fractal tree drawer
+The project was developed as a semesterproject for the ROS2 course at Óbuda University
 
 ## About
 
@@ -16,4 +17,11 @@ How to *run* the package.
 
     cd ~/ros2_ws
     ros2 launch ros2_course turtlesim_launch.py
+
+How to set *parameter*.
+
+The node has only one parameter which sets how big of a tree we want to draw. 
+The value must be in range [0.5; 2.5] to ensure proper behaviour. 
+
+    ros2 param set turtlesim_controller iter <your_float_value>
 
