@@ -1,5 +1,5 @@
 # TurtleSim fractal tree drawer
-The project was developed as a semesterproject for the ROS2 course at Óbuda University
+The project was developed as a semester project for the ROS2 course at Óbuda University
 
 ## About
 
